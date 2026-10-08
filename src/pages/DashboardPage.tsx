@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { Sidebar, NavigationTab } from '../components/Sidebar';
 import { PatientsPage } from './PatientsPage';
-import { PatientDetailModal } from '../components/PatientDetailModal';
+import { NewPatientPage } from './NewPatientPage';
+import { PatientProfilePage } from './PatientProfilePage';
 import { dashboardService } from '../services/dashboardService';
 import { DashboardStats } from '../types/database';
 import {
@@ -22,6 +23,7 @@ export const DashboardPage: React.FC = () => {
   const [currentTab, setCurrentTab] = useState<NavigationTab>('dashboard');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [selectedPatientId, setSelectedPatientId] = useState<string | null>(null);
+  const [currentView, setCurrentView] = useState<'main' | 'new-patient'>('main');
 
   const [stats, setStats] = useState<DashboardStats>({
     totalPacientes: 0,
@@ -65,7 +67,11 @@ export const DashboardPage: React.FC = () => {
       {/* Menu Lateral Fixo */}
       <Sidebar
         currentTab={currentTab}
-        onSelectTab={setCurrentTab}
+        onSelectTab={(tab) => {
+          setCurrentTab(tab);
+          setCurrentView('main');
+          setSelectedPatientId(null);
+        }}
         isOpenMobile={isMobileMenuOpen}
         onCloseMobile={() => setIsMobileMenuOpen(false)}
         totalPacientes={stats.totalPacientes}
@@ -93,8 +99,29 @@ export const DashboardPage: React.FC = () => {
 
         {/* Conteúdo Principal */}
         <main className="flex-1 p-4 sm:p-6 lg:p-8 max-w-7xl w-full mx-auto space-y-8">
-          {currentTab === 'pacientes' ? (
-            <PatientsPage onSelectPatient={(id) => setSelectedPatientId(id)} />
+          {/* Se um paciente foi selecionado (via listagem ou cards do dashboard), renderiza a tela completa de Perfil */}
+          {selectedPatientId ? (
+            <PatientProfilePage
+              patientId={selectedPatientId}
+              onBack={() => {
+                setSelectedPatientId(null);
+                loadStats();
+              }}
+            />
+          ) : currentTab === 'pacientes' && currentView === 'new-patient' ? (
+            <NewPatientPage
+              onBack={() => setCurrentView('main')}
+              onPatientCreated={(id) => {
+                setCurrentView('main');
+                setSelectedPatientId(id);
+                loadStats();
+              }}
+            />
+          ) : currentTab === 'pacientes' ? (
+            <PatientsPage
+              onSelectPatient={(id) => setSelectedPatientId(id)}
+              onNewPatient={() => setCurrentView('new-patient')}
+            />
           ) : (
             <div className="space-y-8 animate-in fade-in duration-300">
               {/* Header de Boas-Vindas */}
@@ -278,7 +305,7 @@ export const DashboardPage: React.FC = () => {
                   </div>
 
                   <div className="pt-4 mt-4 border-t border-slate-100 text-[11px] text-slate-400 flex items-center justify-between">
-                    <span>Clique no paciente para ver prontuário</span>
+                    <span>Clique no paciente para abrir o perfil</span>
                   </div>
                 </div>
               </div>
@@ -306,12 +333,6 @@ export const DashboardPage: React.FC = () => {
           )}
         </main>
       </div>
-
-      {/* Modal de Detalhes / Prontuário do Paciente */}
-      <PatientDetailModal
-        patientId={selectedPatientId}
-        onClose={() => setSelectedPatientId(null)}
-      />
     </div>
   );
 };

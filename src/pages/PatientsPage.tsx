@@ -1,44 +1,39 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { neon } from '@neondatabase/serverless';
-import { Paciente } from '../types/database';
-import { Users, Search, Phone, Mail, ArrowRight, RefreshCw } from 'lucide-react';
+import { patientService, PatientWithLastConsulta } from '../services/patientService';
+import {
+  Users,
+  Search,
+  Phone,
+  Mail,
+  ArrowRight,
+  RefreshCw,
+  Plus,
+  Target,
+  Calendar,
+} from 'lucide-react';
 import { Button } from '../components/ui/Button';
-
-const DATABASE_URL = import.meta.env.VITE_NEON_DATABASE_URL || '';
-let sql: any = null;
-if (DATABASE_URL) {
-  try {
-    sql = neon(DATABASE_URL);
-  } catch (e) {
-    console.warn(e);
-  }
-}
 
 interface PatientsPageProps {
   onSelectPatient?: (patientId: string) => void;
+  onNewPatient?: () => void;
 }
 
-export const PatientsPage: React.FC<PatientsPageProps> = ({ onSelectPatient }) => {
+export const PatientsPage: React.FC<PatientsPageProps> = ({ onSelectPatient, onNewPatient }) => {
   const { user } = useAuth();
-  const [patients, setPatients] = useState<Paciente[]>([]);
+  const [patients, setPatients] = useState<PatientWithLastConsulta[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [isLoading, setIsLoading] = useState(true);
 
   const fetchPatients = async () => {
-    if (!user?.id || !sql) {
+    if (!user?.id) {
       setIsLoading(false);
       return;
     }
     setIsLoading(true);
     try {
-      const rows = await sql`
-        SELECT *
-        FROM public.pacientes
-        WHERE nutricionista_id = ${user.id}::uuid
-        ORDER BY created_at DESC;
-      `;
-      setPatients(rows || []);
+      const rows = await patientService.getPatients(user.id);
+      setPatients(rows);
     } catch (err) {
       console.error('Erro ao buscar pacientes:', err);
     } finally {
@@ -50,11 +45,23 @@ export const PatientsPage: React.FC<PatientsPageProps> = ({ onSelectPatient }) =
     fetchPatients();
   }, [user?.id]);
 
-  const filteredPatients = patients.filter((p) =>
-    p.nome.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (p.email && p.email.toLowerCase().includes(searchTerm.toLowerCase())) ||
-    (p.whatsapp && p.whatsapp.includes(searchTerm))
+  const filteredPatients = patients.filter(
+    (p) =>
+      p.nome.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (p.email && p.email.toLowerCase().includes(searchTerm.toLowerCase())) ||
+      (p.whatsapp && p.whatsapp.includes(searchTerm))
   );
+
+  const getObjetivoDisplay = (patient: PatientWithLastConsulta): string | null => {
+    const parts: string[] = [];
+    if (patient.objetivos && patient.objetivos.length > 0) {
+      parts.push(patient.objetivos.join(', '));
+    }
+    if (patient.objetivo_texto) {
+      parts.push(patient.objetivo_texto);
+    }
+    return parts.length > 0 ? parts.join(' · ') : null;
+  };
 
   return (
     <div className="space-y-6">
@@ -79,6 +86,14 @@ export const PatientsPage: React.FC<PatientsPageProps> = ({ onSelectPatient }) =
           >
             <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin text-emerald-600' : ''}`} />
             Atualizar
+          </Button>
+          <Button
+            variant="primary"
+            onClick={onNewPatient}
+            className="text-xs flex items-center gap-2 py-2 shadow-lg shadow-emerald-600/20"
+          >
+            <Plus className="w-4 h-4" />
+            Novo Paciente
           </Button>
         </div>
       </div>
@@ -114,50 +129,80 @@ export const PatientsPage: React.FC<PatientsPageProps> = ({ onSelectPatient }) =
               ? 'Tente buscar com outros termos ou limpe a barra de pesquisa.'
               : 'Seus pacientes cadastrados aparecerão aqui com acesso direto aos prontuários e consultas.'}
           </p>
+          {!searchTerm && onNewPatient && (
+            <Button
+              variant="primary"
+              onClick={onNewPatient}
+              className="text-sm flex items-center gap-2 mx-auto mt-2"
+            >
+              <Plus className="w-4 h-4" />
+              Cadastrar primeiro paciente
+            </Button>
+          )}
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filteredPatients.map((patient) => (
-            <div
-              key={patient.id}
-              onClick={() => onSelectPatient && onSelectPatient(patient.id)}
-              className="bg-white rounded-2xl border border-slate-200 p-5 hover:border-emerald-300 hover:shadow-md transition-all cursor-pointer group space-y-3"
-            >
-              <div className="flex items-center gap-3">
-                <div className="w-11 h-11 rounded-xl bg-emerald-100 text-emerald-800 font-bold flex items-center justify-center text-base border border-emerald-200">
-                  {patient.nome.charAt(0).toUpperCase()}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <h4 className="font-bold text-slate-800 group-hover:text-emerald-700 transition-colors truncate">
-                    {patient.nome}
-                  </h4>
-                  <span className="text-xs text-slate-400">
-                    Cadastrado em {new Date(patient.created_at).toLocaleDateString('pt-BR')}
-                  </span>
-                </div>
-              </div>
+          {filteredPatients.map((patient) => {
+            const objetivo = getObjetivoDisplay(patient);
 
-              <div className="space-y-1.5 text-xs text-slate-600 pt-2 border-t border-slate-100">
-                {patient.whatsapp && (
-                  <div className="flex items-center gap-2">
-                    <Phone className="w-3.5 h-3.5 text-slate-400" />
-                    <span>{patient.whatsapp}</span>
+            return (
+              <div
+                key={patient.id}
+                onClick={() => onSelectPatient && onSelectPatient(patient.id)}
+                className="bg-white rounded-2xl border border-slate-200 p-5 hover:border-emerald-300 hover:shadow-md transition-all cursor-pointer group space-y-3"
+              >
+                {/* Nome e avatar */}
+                <div className="flex items-center gap-3">
+                  <div className="w-11 h-11 rounded-xl bg-emerald-100 text-emerald-800 font-bold flex items-center justify-center text-base border border-emerald-200">
+                    {patient.nome.charAt(0).toUpperCase()}
                   </div>
-                )}
-                {patient.email && (
-                  <div className="flex items-center gap-2">
-                    <Mail className="w-3.5 h-3.5 text-slate-400" />
-                    <span className="truncate">{patient.email}</span>
+                  <div className="min-w-0 flex-1">
+                    <h4 className="font-bold text-slate-800 group-hover:text-emerald-700 transition-colors truncate">
+                      {patient.nome}
+                    </h4>
+                    <span className="text-xs text-slate-400">
+                      Cadastrado em {new Date(patient.created_at).toLocaleDateString('pt-BR')}
+                    </span>
                   </div>
-                )}
-              </div>
+                </div>
 
-              <div className="pt-2 flex items-center justify-between text-xs font-semibold text-emerald-600 group-hover:text-emerald-700">
-                <span>Ver Prontuário</span>
-                <ArrowRight className="w-4 h-4 transform group-hover:translate-x-1 transition-transform" />
+                {/* Objetivo e última consulta */}
+                <div className="space-y-1.5 text-xs text-slate-600 pt-2 border-t border-slate-100">
+                  {objetivo && (
+                    <div className="flex items-start gap-2">
+                      <Target className="w-3.5 h-3.5 text-emerald-500 mt-0.5 flex-shrink-0" />
+                      <span className="line-clamp-2">{objetivo}</span>
+                    </div>
+                  )}
+                  <div className="flex items-center gap-2">
+                    <Calendar className="w-3.5 h-3.5 text-teal-500 flex-shrink-0" />
+                    <span>
+                      {patient.ultima_consulta
+                        ? `Última consulta: ${new Date(patient.ultima_consulta + 'T00:00:00').toLocaleDateString('pt-BR')}`
+                        : 'Sem consultas registradas'}
+                    </span>
+                  </div>
+                  {patient.whatsapp && (
+                    <div className="flex items-center gap-2">
+                      <Phone className="w-3.5 h-3.5 text-slate-400" />
+                      <span>{patient.whatsapp}</span>
+                    </div>
+                  )}
+                  {patient.email && (
+                    <div className="flex items-center gap-2">
+                      <Mail className="w-3.5 h-3.5 text-slate-400" />
+                      <span className="truncate">{patient.email}</span>
+                    </div>
+                  )}
+                </div>
+
+                <div className="pt-2 flex items-center justify-between text-xs font-semibold text-emerald-600 group-hover:text-emerald-700">
+                  <span>Ver Prontuário</span>
+                  <ArrowRight className="w-4 h-4 transform group-hover:translate-x-1 transition-transform" />
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>
